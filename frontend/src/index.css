@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Instrument Serif", Georgia, serif;
+  --color-ink: #0c1a17;
+  --color-ink-muted: #3d524c;
+  --color-paper: #f3f6f4;
+  --color-paper-2: #e7eee9;
+  --color-teal: #0f766e;
+  --color-teal-dark: #0a4f4a;
+  --color-teal-light: #14b8a6;
+  --color-coral: #c45c26;
+  --color-gain: #0d7a4f;
+  --color-loss: #b42318;
+  --color-line: #c5d4cd;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--color-ink);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(20, 184, 166, 0.12), transparent 55%),
+    radial-gradient(900px 500px at 100% 0%, rgba(196, 92, 38, 0.08), transparent 50%),
+    linear-gradient(180deg, #f7faf8 0%, #eef3f0 100%);
+  background-attachment: fixed;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.card-surface {
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid var(--color-line);
+  backdrop-filter: blur(8px);
+}
+
+.gain { color: var(--color-gain); }
+.loss { color: var(--color-loss); }
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-rise {
+  animation: rise 0.45s ease-out both;
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 1.6s ease-in-out infinite;
+}
