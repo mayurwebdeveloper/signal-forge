@@ -1,5 +1,7 @@
 # Stock Market Analytics & Pattern Detection Platform
 
+**signal-forge** — stock analytics personal portfolio
+
 AI-powered analytics platform for historical market data, technical indicators, chart/candlestick patterns, support & resistance, volume analytics, probability scoring, scanning, watchlists, alerts, backtesting, portfolio tracking, and reports.
 
 **Important:** This application does **not** guarantee future prices or profits. It provides statistical analysis and historical pattern matching only — not financial advice.
