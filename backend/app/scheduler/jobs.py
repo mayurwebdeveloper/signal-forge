@@ -11,6 +11,7 @@ from app.database import SessionLocal
 from app.database.models import AuditLog, Job, Stock
 from app.services.analysis import analyze_stock
 from app.services.data_downloader import download_stock_data, seed_stocks
+from app.services.suggestions import generate_daily_suggestions
 
 logger = logging.getLogger(__name__)
 scheduler = BackgroundScheduler(timezone="UTC")
@@ -50,6 +51,8 @@ def daily_pipeline():
                 errors.append({"symbol": stock.symbol, "error": str(exc)})
                 logger.exception("Pipeline failed for %s", stock.symbol)
 
+        suggestions = generate_daily_suggestions(db, force=True)
+
         # Clean old logs (>30 days)
         cutoff = datetime.utcnow() - timedelta(days=30)
         deleted = db.query(AuditLog).filter(AuditLog.created_at < cutoff).delete()
@@ -59,8 +62,8 @@ def daily_pipeline():
             db,
             job,
             "success",
-            f"Downloaded {downloaded}, analyzed {analyzed}, cleaned {deleted} logs",
-            {"errors": errors[:20]},
+            f"Downloaded {downloaded}, analyzed {analyzed}, suggestions {suggestions.get('count', 0)}, cleaned {deleted} logs",
+            {"errors": errors[:20], "suggestions": suggestions},
         )
     except Exception as exc:  # noqa: BLE001
         logger.exception("Daily pipeline failed")

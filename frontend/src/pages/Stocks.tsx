@@ -1,7 +1,7 @@
 import { FormEvent, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { api } from '../lib/api';
-import { Button, Empty, Input, Loading, PageHeader, Panel, money } from '../components/ui';
+import { Badge, Button, Empty, Input, Loading, PageHeader, Panel, money, pct } from '../components/ui';
 
 type Stock = {
   id: number;
@@ -21,6 +21,21 @@ type LookupItem = {
   stock_id?: number | null;
 };
 
+type Suggestion = {
+  stock_id: number;
+  symbol: string;
+  company_name: string;
+  sector?: string;
+  next_day_probability: number;
+  expected_direction: string;
+  confidence: string;
+  risk: string;
+  price?: number;
+  change_pct?: number;
+  reasons?: string[];
+  rank: number;
+};
+
 export default function StocksPage() {
   const navigate = useNavigate();
   const [stocks, setStocks] = useState<Stock[]>([]);
@@ -31,6 +46,8 @@ export default function StocksPage() {
   const [looking, setLooking] = useState(false);
   const [adding, setAdding] = useState<string | null>(null);
   const [msg, setMsg] = useState('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [suggestionsEnabled, setSuggestionsEnabled] = useState(true);
 
   const load = (query = q) => {
     setLoading(true);
@@ -42,6 +59,12 @@ export default function StocksPage() {
 
   useEffect(() => {
     load();
+    api<{ enabled: boolean; suggestions: Suggestion[] }>('/api/suggestions/daily')
+      .then((res) => {
+        setSuggestionsEnabled(res.enabled);
+        setSuggestions(res.suggestions || []);
+      })
+      .catch(() => undefined);
   }, []);
 
   const searchLocal = (e?: FormEvent) => {
@@ -106,6 +129,41 @@ export default function StocksPage() {
           </form>
         }
       />
+
+      {suggestionsEnabled && suggestions.length > 0 && (
+        <Panel className="mb-4">
+          <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+            <div>
+              <h3 className="font-semibold">Suggested for you today</h3>
+              <p className="text-xs text-[var(--color-ink-muted)]">
+                Not sure where to start? These {suggestions.length} ranked next-session setups are highlighted from analytics.
+              </p>
+            </div>
+            <Link to="/suggestions" className="text-sm text-teal-800 hover:underline">
+              Full suggestions list
+            </Link>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {suggestions.slice(0, 12).map((s) => (
+              <Link
+                key={s.stock_id}
+                to={`/stocks/${s.stock_id}`}
+                className="rounded-md border border-[var(--color-line)] px-3 py-2 text-sm hover:border-teal-600 min-w-[140px]"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="font-semibold">#{s.rank} {s.symbol}</span>
+                  <Badge tone={s.expected_direction === 'Bullish' ? 'bull' : s.expected_direction === 'Bearish' ? 'bear' : 'neutral'}>
+                    {s.next_day_probability}%
+                  </Badge>
+                </div>
+                <div className="text-xs text-[var(--color-ink-muted)] mt-0.5">
+                  {s.price != null ? money(s.price) : ''} {s.change_pct != null ? pct(s.change_pct) : ''}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </Panel>
+      )}
 
       <Panel className="mb-4">
         <h3 className="font-semibold mb-1">Find & add any share</h3>

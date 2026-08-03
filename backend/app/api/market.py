@@ -37,6 +37,8 @@ from app.database.schemas import (
     PortfolioOut,
     ReportRequest,
     ScannerFilters,
+    SystemSettingsOut,
+    SystemSettingsUpdate,
     WatchlistCreate,
     WatchlistItemAdd,
     WatchlistOut,
@@ -46,9 +48,16 @@ from app.scheduler.jobs import daily_pipeline
 from app.services.analysis import analyze_stock, scan_stocks
 from app.services.data_downloader import download_stock_data, get_price_dataframe, seed_stocks
 from app.services.reports import generate_excel_report, generate_portfolio_pdf, generate_stock_pdf
+from app.services.suggestions import (
+    generate_daily_suggestions,
+    get_suggestion_settings,
+    list_daily_suggestions,
+    update_suggestion_settings,
+)
 
 dashboard_router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 scanner_router = APIRouter(prefix="/scanner", tags=["Scanner"])
+suggestions_router = APIRouter(prefix="/suggestions", tags=["Suggestions"])
 watchlist_router = APIRouter(prefix="/watchlists", tags=["Watchlists"])
 alerts_router = APIRouter(prefix="/alerts", tags=["Alerts"])
 portfolio_router = APIRouter(prefix="/portfolios", tags=["Portfolio"])
@@ -137,6 +146,9 @@ def dashboard_overview(db: Session = Depends(get_db), user: User = Depends(get_c
     if movers:
         market_change = round(sum(m["change_pct"] for m in movers) / len(movers), 3)
 
+    daily = list_daily_suggestions(db, auto_generate=True)
+    daily_picks = daily.get("suggestions", [])[:10]
+
     return {
         "market_overview": {
             "stocks_tracked": len(stocks),
@@ -149,6 +161,9 @@ def dashboard_overview(db: Session = Depends(get_db), user: User = Depends(get_c
         "watchlist": watchlist_items,
         "todays_signals": signals,
         "ai_recommendations": recommendations,
+        "daily_suggestions": daily_picks,
+        "suggestions_enabled": daily.get("enabled", True),
+        "suggestions_date": daily.get("date"),
         "upcoming_breakouts": upcoming_breakouts,
         "disclaimer": "Statistical analysis only. Not financial advice. No guarantee of future prices or profits.",
     }
@@ -158,6 +173,27 @@ def dashboard_overview(db: Session = Depends(get_db), user: User = Depends(get_c
 def run_scanner(filters: ScannerFilters, db: Session = Depends(get_db), user: User = Depends(get_current_user)):
     results = scan_stocks(db, filters)
     return {"results": results, "count": len(results)}
+
+
+@suggestions_router.get("/daily")
+def get_daily_suggestions(
+    suggestion_date: date | None = None,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    return list_daily_suggestions(db, for_date=suggestion_date, auto_generate=True)
+
+
+@suggestions_router.post("/daily/refresh")
+def refresh_daily_suggestions(db: Session = Depends(get_db), user: User = Depends(get_current_user)):
+    result = generate_daily_suggestions(db, force=True)
+    payload = list_daily_suggestions(
+        db,
+        for_date=date.fromisoformat(result["date"]) if result.get("date") else None,
+        auto_generate=False,
+    )
+    payload["refresh"] = result
+    return payload
 
 
 # ---------- Watchlists ----------
@@ -603,7 +639,10 @@ def refresh_data(db: Session = Depends(get_db), admin: User = Depends(get_curren
             count += 1
         except Exception:
             continue
-    return MessageOut(message=f"Refreshed {count} stocks")
+    suggestions = generate_daily_suggestions(db, force=True)
+    return MessageOut(
+        message=f"Refreshed {count} stocks and generated {suggestions.get('count', 0)} daily suggestions"
+    )
 
 
 @admin_router.post("/run-pipeline", response_model=MessageOut)
@@ -615,3 +654,30 @@ def run_pipeline(admin: User = Depends(get_current_admin)):
 @admin_router.get("/stocks")
 def admin_stocks(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
     return db.query(Stock).order_by(Stock.symbol).all()
+
+
+@admin_router.get("/settings", response_model=SystemSettingsOut)
+def get_system_settings(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
+    return SystemSettingsOut(**get_suggestion_settings(db))
+
+
+@admin_router.put("/settings", response_model=SystemSettingsOut)
+def put_system_settings(
+    payload: SystemSettingsUpdate,
+    db: Session = Depends(get_db),
+    admin: User = Depends(get_current_admin),
+):
+    updated = update_suggestion_settings(db, payload.model_dump(exclude_unset=True))
+    if updated["suggestions_min_count"] > updated["suggestions_max_count"]:
+        update_suggestion_settings(db, {"suggestions_max_count": updated["suggestions_min_count"]})
+        updated = get_suggestion_settings(db)
+    return SystemSettingsOut(**updated)
+
+
+@admin_router.post("/suggestions/regenerate", response_model=MessageOut)
+def admin_regenerate_suggestions(db: Session = Depends(get_db), admin: User = Depends(get_current_admin)):
+    result = generate_daily_suggestions(db, force=True)
+    return MessageOut(
+        message=f"Generated {result.get('count', 0)} suggestions for {result.get('date')}",
+        detail=result,
+    )

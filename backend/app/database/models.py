@@ -312,3 +312,39 @@ class AuditLog(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
 
 
+class SystemSetting(Base):
+    """Key/value system options (admin-configurable)."""
+
+    __tablename__ = "system_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(100), unique=True, index=True, nullable=False)
+    value: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, onupdate=utcnow)
+
+
+class DailySuggestion(Base):
+    """Ranked next-session stock suggestions for a given calendar day."""
+
+    __tablename__ = "daily_suggestions"
+    __table_args__ = (UniqueConstraint("suggestion_date", "stock_id", name="uq_suggestion_date_stock"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    suggestion_date: Mapped[date] = mapped_column(Date, index=True)
+    stock_id: Mapped[int] = mapped_column(ForeignKey("stocks.id", ondelete="CASCADE"), index=True)
+    rank: Mapped[int] = mapped_column(Integer)
+    score: Mapped[float] = mapped_column(Float)
+    next_day_probability: Mapped[float] = mapped_column(Float)
+    expected_direction: Mapped[str] = mapped_column(String(20))
+    confidence: Mapped[str] = mapped_column(String(20), default="Medium")
+    risk: Mapped[str] = mapped_column(String(20), default="Medium")
+    price: Mapped[float | None] = mapped_column(Float, nullable=True)
+    change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    features: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+    stock = relationship("Stock")
+
+

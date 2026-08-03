@@ -15,6 +15,7 @@ from app.database import SessionLocal, init_db
 from app.database.models import User
 from app.scheduler.jobs import shutdown_scheduler, start_scheduler
 from app.services.data_downloader import seed_stocks
+from app.services.suggestions import ensure_default_settings
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ def ensure_admin():
             db.commit()
             logger.info("Default admin created: %s", settings.default_admin_email)
         seed_stocks(db)
+        ensure_default_settings(db)
     finally:
         db.close()
 
@@ -90,6 +92,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(stocks.router, prefix="/api")
 app.include_router(market.dashboard_router, prefix="/api")
 app.include_router(market.scanner_router, prefix="/api")
+app.include_router(market.suggestions_router, prefix="/api")
 app.include_router(market.watchlist_router, prefix="/api")
 app.include_router(market.alerts_router, prefix="/api")
 app.include_router(market.portfolio_router, prefix="/api")

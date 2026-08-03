@@ -58,6 +58,7 @@ App: http://127.0.0.1:5173
 - Watchlist, alerts, portfolio
 - Backtesting engine
 - Dashboard, stock detail, reports (PDF/Excel)
+- Daily next-session stock suggestions (min 10) + system options
 - Admin panel + daily scheduler
 
 ## Environment

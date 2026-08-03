@@ -14,6 +14,7 @@ import BacktestPage from './pages/Backtest';
 import AlertsPage from './pages/Alerts';
 import ReportsPage from './pages/Reports';
 import AdminPage from './pages/Admin';
+import SuggestionsPage from './pages/Suggestions';
 
 function Private({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -36,6 +37,7 @@ export default function App() {
         }
       >
         <Route index element={<DashboardPage />} />
+        <Route path="suggestions" element={<SuggestionsPage />} />
         <Route path="stocks" element={<StocksPage />} />
         <Route path="stocks/:id" element={<StockDetailPage />} />
         <Route path="scanner" element={<ScannerPage />} />

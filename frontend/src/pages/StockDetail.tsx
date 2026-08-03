@@ -36,15 +36,62 @@ type Analysis = {
   };
 };
 
+type ChartRange = '1d' | '5d' | '1mo' | '6mo' | '1y' | '5y';
+
+const RANGE_OPTIONS: Array<{ key: ChartRange; label: string }> = [
+  { key: '1d', label: '1D · 5m' },
+  { key: '5d', label: '5D · 1h' },
+  { key: '1mo', label: '1M · 4h' },
+  { key: '6mo', label: '6M · 1D' },
+  { key: '1y', label: '1Y · 1D' },
+  { key: '5y', label: '5Y · 1W' },
+];
+
+type ChartPayload = {
+  range: ChartRange;
+  label: string;
+  interval: string;
+  intraday: boolean;
+  bars: Array<{ time: string; open: number; high: number; low: number; close: number; volume: number }>;
+  count: number;
+};
+
 export default function StockDetailPage() {
   const { id } = useParams();
   const [prices, setPrices] = useState<Candle[]>([]);
+  const [intraday, setIntraday] = useState(false);
+  const [chartLabel, setChartLabel] = useState('6 months · daily');
+  const [range, setRange] = useState<ChartRange>('6mo');
+  const [chartLoading, setChartLoading] = useState(false);
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [meta, setMeta] = useState<{ symbol: string; company_name: string } | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [status, setStatus] = useState('Loading…');
+
+  const loadChart = useCallback(async (stockId: string, chartRange: ChartRange) => {
+    setChartLoading(true);
+    try {
+      const chart = await api<ChartPayload>(`/api/stocks/${stockId}/chart?range=${chartRange}`);
+      setPrices(
+        (chart.bars || []).map((b) => ({
+          time: b.time,
+          open: b.open,
+          high: b.high,
+          low: b.low,
+          close: b.close,
+          volume: b.volume,
+        })),
+      );
+      setIntraday(!!chart.intraday);
+      setChartLabel(chart.label || chartRange);
+    } catch {
+      setPrices([]);
+    } finally {
+      setChartLoading(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -56,13 +103,10 @@ export default function StockDetailPage() {
       setMeta(stockMeta);
       setStatus(`Loading ${stockMeta.symbol} — downloading history if needed…`);
 
-      // Analysis endpoint auto-downloads missing Yahoo history
       const a = await api<Analysis>(`/api/stocks/${id}/analysis`);
-      const p = await api<Candle[]>(`/api/stocks/${id}/prices?limit=365`);
-
-      setPrices((p || []).map((x) => ({ ...x, date: String(x.date).slice(0, 10) })));
       setAnalysis(a);
       if (a?.error) setError(a.error);
+      await loadChart(id, range);
     } catch (e) {
       setAnalysis(null);
       setError(e instanceof Error ? e.message : 'Failed to load');
@@ -70,11 +114,19 @@ export default function StockDetailPage() {
       setLoading(false);
       setStatus('');
     }
-  }, [id]);
+  }, [id, loadChart, range]);
 
   useEffect(() => {
     load();
-  }, [load]);
+    // initial load for stock id only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id]);
+
+  useEffect(() => {
+    if (!id || loading) return;
+    loadChart(id, range);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [range]);
 
   const refresh = async () => {
     setBusy(true);
@@ -135,7 +187,35 @@ export default function StockDetailPage() {
 
       <div className="grid xl:grid-cols-3 gap-4 mb-4">
         <Panel className="xl:col-span-2">
-          {prices.length ? <PriceChart data={prices} /> : <Empty text="No candles available" />}
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h3 className="font-semibold text-sm">Trend chart</h3>
+              <p className="text-xs text-[var(--color-ink-muted)]">{chartLabel}</p>
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {RANGE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.key}
+                  type="button"
+                  onClick={() => setRange(opt.key)}
+                  className={`rounded-md px-2.5 py-1 text-xs font-medium border transition ${
+                    range === opt.key
+                      ? 'bg-teal-700 text-white border-teal-700'
+                      : 'bg-white/70 border-[var(--color-line)] text-[var(--color-ink)] hover:border-teal-600'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {chartLoading ? (
+            <Loading />
+          ) : prices.length ? (
+            <PriceChart data={prices} intraday={intraday} />
+          ) : (
+            <Empty text="No candles for this range" />
+          )}
         </Panel>
         <Panel>
           <h3 className="font-semibold mb-2">AI probability</h3>

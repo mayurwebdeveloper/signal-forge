@@ -8,6 +8,7 @@ import {
   LogOut,
   Radar,
   Settings,
+  Sparkles,
   Star,
   FlaskConical,
   FileText,
@@ -16,6 +17,7 @@ import { useAuth } from '../context/AuthContext';
 
 const links = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/suggestions', label: 'Suggestions', icon: Sparkles },
   { to: '/stocks', label: 'Stocks', icon: LineChart },
   { to: '/scanner', label: 'Scanner', icon: Radar },
   { to: '/watchlist', label: 'Watchlist', icon: Star },

@@ -276,3 +276,18 @@ class PredictionOut(BaseModel):
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# ---------- System settings & daily suggestions ----------
+class SystemSettingsOut(BaseModel):
+    suggestions_enabled: bool = True
+    suggestions_min_count: int = 10
+    suggestions_max_count: int = 20
+    suggestions_min_bullish_pct: float = 50.0
+
+
+class SystemSettingsUpdate(BaseModel):
+    suggestions_enabled: Optional[bool] = None
+    suggestions_min_count: Optional[int] = Field(default=None, ge=5, le=50)
+    suggestions_max_count: Optional[int] = Field(default=None, ge=10, le=100)
+    suggestions_min_bullish_pct: Optional[float] = Field(default=None, ge=0, le=100)

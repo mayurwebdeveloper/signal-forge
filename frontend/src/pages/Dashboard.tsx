@@ -3,6 +3,20 @@ import { Link } from 'react-router-dom';
 import { api } from '../lib/api';
 import { Badge, Empty, Loading, PageHeader, Panel, Stat, money, pct } from '../components/ui';
 
+type Suggestion = {
+  stock_id: number;
+  symbol: string;
+  company_name: string;
+  next_day_probability: number;
+  expected_direction: string;
+  confidence: string;
+  risk: string;
+  price?: number;
+  change_pct?: number;
+  reasons?: string[];
+  rank?: number;
+};
+
 type Overview = {
   market_overview: { stocks_tracked: number; avg_change_pct: number; bullish_count: number; bearish_count: number };
   top_gainers: Array<{ stock_id: number; symbol: string; company_name: string; price: number; change_pct: number }>;
@@ -10,6 +24,9 @@ type Overview = {
   watchlist: Array<{ stock_id: number; symbol: string; price?: number; change_pct?: number }>;
   todays_signals: Array<{ stock_id: number; symbol: string; expected_direction: string; bullish_probability: number; confidence: string }>;
   ai_recommendations: Array<{ stock_id: number; symbol: string; company_name: string; bullish_probability: number; expected_direction: string; confidence: string; risk: string }>;
+  daily_suggestions?: Suggestion[];
+  suggestions_enabled?: boolean;
+  suggestions_date?: string;
   upcoming_breakouts: Array<{ stock_id: number; symbol: string; change_pct: number; price: number }>;
 };
 
@@ -27,6 +44,7 @@ export default function DashboardPage() {
   if (!data) return <Loading />;
 
   const m = data.market_overview;
+  const picks = data.daily_suggestions || [];
 
   return (
     <div>
@@ -37,6 +55,46 @@ export default function DashboardPage() {
         <Stat label="Bullish bias" value={m.bullish_count} tone="gain" />
         <Stat label="Bearish bias" value={m.bearish_count} tone="loss" />
       </div>
+
+      {data.suggestions_enabled !== false && (
+        <Panel className="mb-4">
+          <div className="flex flex-wrap items-end justify-between gap-2 mb-3">
+            <div>
+              <h3 className="font-semibold">Today&apos;s suggested stocks</h3>
+              <p className="text-xs text-[var(--color-ink-muted)] mt-0.5">
+                At least 10 next-session setups{data.suggestions_date ? ` · ${data.suggestions_date}` : ''}
+              </p>
+            </div>
+            <Link to="/suggestions" className="text-sm text-teal-800 hover:underline">
+              View all suggestions
+            </Link>
+          </div>
+          {picks.length === 0 ? (
+            <Empty text="Suggestions will appear after analysis — open Suggestions or refresh data in Admin" />
+          ) : (
+            <div className="grid sm:grid-cols-2 xl:grid-cols-5 gap-2">
+              {picks.map((s) => (
+                <Link
+                  key={s.stock_id}
+                  to={`/stocks/${s.stock_id}`}
+                  className="rounded-lg border border-[var(--color-line)] px-3 py-2.5 hover:border-teal-600 transition"
+                >
+                  <div className="flex justify-between items-start gap-2">
+                    <span className="font-semibold text-sm">{s.symbol}</span>
+                    <Badge tone={s.expected_direction === 'Bullish' ? 'bull' : s.expected_direction === 'Bearish' ? 'bear' : 'neutral'}>
+                      {s.next_day_probability}%
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-[var(--color-ink-muted)] mt-1 truncate">{s.company_name}</div>
+                  <div className={`text-xs mt-1 ${Number(s.change_pct) >= 0 ? 'gain' : 'loss'}`}>
+                    {s.price != null ? money(s.price) : ''} {s.change_pct != null ? pct(s.change_pct) : ''}
+                  </div>
+                </Link>
+              ))}
+            </div>
+          )}
+        </Panel>
+      )}
 
       <div className="grid lg:grid-cols-2 gap-4 mb-4">
         <Panel>
@@ -66,7 +124,7 @@ export default function DashboardPage() {
           )}
         </Panel>
         <Panel>
-          <h3 className="font-semibold mb-3">Today's signals</h3>
+          <h3 className="font-semibold mb-3">Today&apos;s signals</h3>
           {data.todays_signals.length === 0 ? <Empty text="No signals yet — refresh data from Admin" /> : (
             <ul className="space-y-2">
               {data.todays_signals.map((s) => (

@@ -8,8 +8,10 @@ from app.database.models import AIPrediction, CandlestickPattern, ChartPattern, 
 from app.database.schemas import MessageOut, PriceBar, StockCreate, StockDetailOut, StockOut
 from app.services.analysis import analyze_stock
 from app.services.data_downloader import (
+    CHART_RANGES,
     download_stock_data,
     fetch_ticker_info,
+    get_chart_data,
     get_price_dataframe,
     normalize_symbol,
     search_yahoo_symbols,
@@ -176,6 +178,25 @@ def get_prices(
             )
         )
     return out
+
+
+@router.get("/{stock_id}/chart")
+def get_stock_chart(
+    stock_id: int,
+    range: str = Query("6mo", pattern="^(1d|5d|1mo|6mo|1y|5y)$"),
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Candles: 1d/5m, 5d/1h, 1mo/4h, 6mo/1d, 1y/1d, 5y/1wk — live from Yahoo."""
+    stock = db.get(Stock, stock_id)
+    if not stock:
+        raise HTTPException(status_code=404, detail="Stock not found")
+    data = get_chart_data(db, stock, range_key=range)
+    data["ranges"] = [
+        {"key": k, "label": v["label"], "interval": v["display_interval"]}
+        for k, v in CHART_RANGES.items()
+    ]
+    return data
 
 
 @router.post("/{stock_id}/download", response_model=MessageOut)

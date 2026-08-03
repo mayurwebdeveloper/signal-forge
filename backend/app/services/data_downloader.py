@@ -277,3 +277,182 @@ def get_price_dataframe(db: Session, stock_id: int, timeframe: str = "1d", limit
     df["date"] = pd.to_datetime(df["date"])
     df = df.set_index("date")
     return df
+
+
+# Chart range presets — always fetched live from Yahoo so candles stay current.
+# Yahoo has no native 4h interval; we pull 60m and resample to 4h.
+CHART_RANGES = {
+    "1d": {
+        "period": "1d",
+        "interval": "5m",
+        "display_interval": "5m",
+        "label": "1 day · 5 min",
+        "intraday": True,
+    },
+    "5d": {
+        "period": "5d",
+        "interval": "60m",
+        "display_interval": "1h",
+        "label": "5 days · 1 hour",
+        "intraday": True,
+    },
+    "1mo": {
+        "period": "1mo",
+        "interval": "60m",
+        "display_interval": "4h",
+        "label": "1 month · 4 hours",
+        "intraday": True,
+        "resample": "4h",
+    },
+    "6mo": {
+        "period": "6mo",
+        "interval": "1d",
+        "display_interval": "1d",
+        "label": "6 months · daily",
+        "intraday": False,
+    },
+    "1y": {
+        "period": "1y",
+        "interval": "1d",
+        "display_interval": "1d",
+        "label": "1 year · daily",
+        "intraday": False,
+    },
+    "5y": {
+        "period": "5y",
+        "interval": "1wk",
+        "display_interval": "1wk",
+        "label": "5 years · weekly",
+        "intraday": False,
+    },
+}
+
+
+def _bars_from_ohlcv_df(df: pd.DataFrame, intraday: bool) -> list[dict]:
+    if df is None or df.empty:
+        return []
+    work = df.copy()
+    if not isinstance(work.index, pd.DatetimeIndex):
+        work = work.reset_index()
+        time_col = "Datetime" if "Datetime" in work.columns else ("Date" if "Date" in work.columns else work.columns[0])
+        work[time_col] = pd.to_datetime(work[time_col])
+        work = work.set_index(time_col)
+
+    # Normalize column names
+    colmap = {c: c.lower().replace(" ", "_") for c in work.columns}
+    work = work.rename(columns=colmap)
+    if "adj_close" not in work.columns and "close" in work.columns:
+        work["adj_close"] = work["close"]
+
+    # Incomplete latest session often has NaN close — fill then drop remaining bad rows
+    for col in ("open", "high", "low", "close", "volume"):
+        if col in work.columns:
+            work[col] = pd.to_numeric(work[col], errors="coerce")
+    if "close" in work.columns and "open" in work.columns:
+        work["close"] = work["close"].fillna(work["open"])
+    if "high" in work.columns:
+        work["high"] = work["high"].fillna(work[["open", "close"]].max(axis=1))
+    if "low" in work.columns:
+        work["low"] = work["low"].fillna(work[["open", "close"]].min(axis=1))
+    work = work.dropna(subset=["open", "high", "low", "close"])
+    if work.empty:
+        return []
+
+    bars: list[dict] = []
+    seen_times: set[str] = set()
+    for ts, row in work.iterrows():
+        t = pd.to_datetime(ts)
+        if getattr(t, "tzinfo", None) is not None:
+            t = t.tz_convert("UTC").tz_localize(None)
+        time_str = t.strftime("%Y-%m-%dT%H:%M:%S") if intraday else t.strftime("%Y-%m-%d")
+        if time_str in seen_times:
+            continue
+        seen_times.add(time_str)
+
+        o, h, low, c = float(row["open"]), float(row["high"]), float(row["low"]), float(row["close"])
+        # Sanitize crossed OHLC so the chart library never rejects a bar
+        h = max(h, o, c, low)
+        low = min(low, o, c, h)
+        adj = row.get("adj_close", c)
+        adj_v = float(adj) if pd.notna(adj) else c
+        vol = row.get("volume", 0.0)
+        bars.append(
+            {
+                "time": time_str,
+                "open": o,
+                "high": h,
+                "low": low,
+                "close": c,
+                "adj_close": adj_v,
+                "volume": float(vol) if pd.notna(vol) else 0.0,
+            }
+        )
+    return bars
+
+
+def fetch_chart_bars(symbol: str, period: str, interval: str, resample: str | None = None) -> list[dict]:
+    """Fetch OHLCV for charting from Yahoo; optional resample (e.g. 4h from 60m)."""
+    ticker = yf.Ticker(symbol)
+    df = ticker.history(period=period, interval=interval, auto_adjust=False)
+    if df is None or df.empty:
+        # Market closed / thin session: widen lookback slightly for intraday
+        if period == "1d" and interval in ("5m", "15m", "30m", "60m", "1h"):
+            df = ticker.history(period="5d", interval=interval, auto_adjust=False)
+            if df is not None and not df.empty:
+                # Keep the most recent trading day only
+                idx = df.index
+                if getattr(idx, "tz", None) is not None:
+                    last_day = idx[-1].tz_convert(None).date()
+                    df = df[idx.tz_convert(None).date == last_day]
+                else:
+                    last_day = pd.Timestamp(idx[-1]).date()
+                    df = df[pd.Series(idx).map(lambda x: pd.Timestamp(x).date()) == last_day]
+        if df is None or df.empty:
+            return []
+
+    if resample:
+        # Ensure tz-naive index for resample stability
+        work = df.copy()
+        if getattr(work.index, "tz", None) is not None:
+            work.index = work.index.tz_convert("UTC").tz_localize(None)
+        agg = {
+            "Open": "first",
+            "High": "max",
+            "Low": "min",
+            "Close": "last",
+            "Volume": "sum",
+        }
+        if "Adj Close" in work.columns:
+            agg["Adj Close"] = "last"
+        work = work.resample(resample).agg(agg).dropna(subset=["Open", "Close"])
+        df = work
+
+    intraday = interval.endswith("m") or interval in ("60m", "1h", "90m") or bool(resample)
+    # Weekly/daily stay date-only
+    if interval in ("1d", "5d", "1wk", "1mo", "3mo") and not resample:
+        intraday = False
+
+    return _bars_from_ohlcv_df(df, intraday=intraday)
+
+
+def get_chart_data(db: Session, stock: Stock, range_key: str = "6mo") -> dict:
+    """Return live candle bars for a chart range preset (always from Yahoo for freshness)."""
+    _ = db  # reserved for future cache; chart always live so latest day is included
+    range_key = range_key if range_key in CHART_RANGES else "6mo"
+    cfg = CHART_RANGES[range_key]
+
+    bars = fetch_chart_bars(
+        stock.symbol,
+        period=cfg["period"],
+        interval=cfg["interval"],
+        resample=cfg.get("resample"),
+    )
+
+    return {
+        "range": range_key,
+        "label": cfg["label"],
+        "interval": cfg["display_interval"],
+        "intraday": bool(cfg["intraday"]),
+        "bars": bars,
+        "count": len(bars),
+    }
