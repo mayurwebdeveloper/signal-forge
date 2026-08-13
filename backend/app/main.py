@@ -3,13 +3,15 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api import auth, market, stocks
-from app.core.config import get_settings
+from app.core.config import BASE_DIR, get_settings
 from app.core.security import hash_password
 from app.database import SessionLocal, init_db
 from app.database.models import User
@@ -20,6 +22,12 @@ from app.services.suggestions import ensure_default_settings
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 settings = get_settings()
+
+# Prefer built assets copied into backend/static (Render single-service deploy).
+# Fallback to frontend/dist for local full-stack builds.
+STATIC_DIR = Path(__file__).resolve().parents[1] / "static"
+FRONTEND_DIST = BASE_DIR / "frontend" / "dist"
+SPA_DIR = STATIC_DIR if (STATIC_DIR / "index.html").exists() else FRONTEND_DIST
 
 
 def ensure_admin():
@@ -99,3 +107,33 @@ app.include_router(market.portfolio_router, prefix="/api")
 app.include_router(market.backtest_router, prefix="/api")
 app.include_router(market.reports_router, prefix="/api")
 app.include_router(market.admin_router, prefix="/api")
+
+
+def _mount_spa() -> None:
+    """Serve the Vite React build from the same origin as the API."""
+    if not (SPA_DIR / "index.html").exists():
+        logger.warning("SPA build not found at %s — API-only mode", SPA_DIR)
+        return
+
+    assets = SPA_DIR / "assets"
+    if assets.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets), name="assets")
+
+    @app.get("/")
+    def spa_index():
+        return FileResponse(SPA_DIR / "index.html")
+
+    @app.get("/{full_path:path}")
+    def spa_fallback(full_path: str):
+        # Never shadow API / docs / OpenAPI
+        if full_path.startswith(("api/", "docs", "redoc", "openapi.json")):
+            return JSONResponse({"detail": "Not Found"}, status_code=404)
+        candidate = SPA_DIR / full_path
+        if candidate.is_file():
+            return FileResponse(candidate)
+        return FileResponse(SPA_DIR / "index.html")
+
+    logger.info("Serving SPA from %s", SPA_DIR)
+
+
+_mount_spa()
