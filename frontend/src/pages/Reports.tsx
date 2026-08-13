@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { api, getAccessToken } from '../lib/api';
+import { API_BASE, api, getAccessToken } from '../lib/api';
 import { Button, Empty, Loading, PageHeader, Panel, Select } from '../components/ui';
 
 export default function ReportsPage() {
@@ -55,7 +55,7 @@ export default function ReportsPage() {
 
   const download = async (id: number) => {
     const token = getAccessToken();
-    const res = await fetch(`/api/reports/${id}/download`, {
+    const res = await fetch(`${API_BASE}/api/reports/${id}/download`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
     if (!res.ok) throw new Error('Download failed');

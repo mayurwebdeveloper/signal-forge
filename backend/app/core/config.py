@@ -2,11 +2,21 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 BASE_DIR = Path(__file__).resolve().parents[3]
 DATA_DIR = BASE_DIR / "data"
 MODELS_DIR = BASE_DIR / "models"
+
+
+def normalize_database_url(url: str) -> str:
+    """Render/Heroku often provide postgres://; SQLAlchemy needs postgresql://."""
+    if url.startswith("postgres://"):
+        return "postgresql+psycopg2://" + url[len("postgres://") :]
+    if url.startswith("postgresql://") and "+psycopg" not in url:
+        return "postgresql+psycopg2://" + url[len("postgresql://") :]
+    return url
 
 
 class Settings(BaseSettings):
@@ -26,6 +36,11 @@ class Settings(BaseSettings):
     default_admin_password: str = "Admin@12345"
     scheduler_enabled: bool = True
     data_lookback_years: int = 5
+
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_db_url(cls, value: str) -> str:
+        return normalize_database_url(str(value))
 
     @property
     def cors_origin_list(self) -> list[str]:

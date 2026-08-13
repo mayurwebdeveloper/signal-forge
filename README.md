@@ -64,3 +64,7 @@ App: http://127.0.0.1:5173
 ## Environment
 
 Copy `backend/.env.example` to `backend/.env` and adjust as needed.
+
+## Deploy on Render
+
+See [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md). Blueprint file: `render.yaml` (API + static frontend + Postgres).

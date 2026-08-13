@@ -1,4 +1,4 @@
-const API_BASE = import.meta.env.VITE_API_URL || '';
+export const API_BASE = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '');
 
 export type Tokens = { access_token: string; refresh_token: string; token_type: string };
 

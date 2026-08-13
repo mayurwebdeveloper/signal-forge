@@ -44,3 +44,42 @@ def init_db() -> None:
     from app.database import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    migrate_schema()
+
+
+def migrate_schema() -> None:
+    """Add new columns to existing SQLite tables (create_all does not alter).
+
+    Postgres fresh deploys get full schema from create_all; skip ALTER there.
+    """
+    if not settings.database_url.startswith("sqlite"):
+        return
+
+    from sqlalchemy import inspect, text
+
+    alterations: list[tuple[str, str, str]] = [
+        ("ai_predictions", "horizons", "JSON"),
+        ("ai_predictions", "reasons", "JSON"),
+        ("ai_predictions", "prob_low", "FLOAT"),
+        ("ai_predictions", "prob_high", "FLOAT"),
+        ("daily_suggestions", "horizon", "VARCHAR(10) DEFAULT '1d'"),
+        ("daily_suggestions", "model_probability", "FLOAT"),
+        ("daily_suggestions", "prob_low", "FLOAT"),
+        ("daily_suggestions", "prob_high", "FLOAT"),
+        ("daily_suggestions", "outcome_return_pct", "FLOAT"),
+        ("daily_suggestions", "outcome_hit", "BOOLEAN"),
+        ("daily_suggestions", "outcome_settled_at", "DATETIME"),
+    ]
+    with engine.begin() as conn:
+        inspector = inspect(conn)
+        tables = set(inspector.get_table_names())
+        for table, column, coltype in alterations:
+            if table not in tables:
+                continue
+            existing = {c["name"] for c in inspector.get_columns(table)}
+            if column in existing:
+                continue
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {column} {coltype}"))
+            # Refresh inspector view for subsequent columns on same table
+            inspector = inspect(conn)
+            tables = set(inspector.get_table_names())
