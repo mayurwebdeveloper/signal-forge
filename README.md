@@ -68,3 +68,6 @@ Copy `backend/.env.example` to `backend/.env` and adjust as needed.
 ## Deploy on Render
 
 See [docs/RENDER_DEPLOY.md](docs/RENDER_DEPLOY.md). Blueprint file: `render.yaml` (API + static frontend + Postgres).
+
+**Important (persistence):** Free web services have an ephemeral disk. SQLite files are wiped on every restart/redeploy.
+Production must set `DATABASE_URL` to Render Postgres (or Neon/Supabase). Check `/api/health` — it should report `"database": "postgresql"` and `"persistent": true`.
