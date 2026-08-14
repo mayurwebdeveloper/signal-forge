@@ -93,7 +93,20 @@ async def unhandled_exception(request: Request, exc: Exception):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "version": settings.app_version, "app": settings.app_name}
+    db_url = settings.database_url
+    if db_url.startswith("sqlite"):
+        dialect = "sqlite"
+    elif "postgres" in db_url:
+        dialect = "postgresql"
+    else:
+        dialect = "other"
+    return {
+        "status": "ok",
+        "version": settings.app_version,
+        "app": settings.app_name,
+        "database": dialect,
+        "persistent": dialect != "sqlite",
+    }
 
 
 app.include_router(auth.router, prefix="/api")
